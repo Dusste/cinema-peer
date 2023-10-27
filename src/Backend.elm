@@ -34,7 +34,7 @@ subscriptions _ =
     Sub.batch
         [ onConnect UserConnected
         , onDisconnect UserDisconnected
-        , Time.every 10000 (\t -> GetTime t)
+        , Time.every 10000 GetTime
         ]
 
 
@@ -271,4 +271,21 @@ updateFromFrontend sessionId clientId msg model =
         RequestLogout ->
             ( { model | connections = Dict.remove sessionId model.connections }
             , sendToFrontend sessionId <| ResponseAuth Anonymus "Session has been terminated"
+            )
+
+        RequestUpdateName name ->
+            let
+                updateUser =
+                    Maybe.map (\u -> { u | name = name })
+
+                updatedUsers =
+                    Dict.update sessionId updateUser model.users
+            in
+            ( { model | users = updatedUsers }
+            , case Dict.get sessionId updatedUsers of
+                Just user ->
+                    sendToFrontend sessionId <| ResponseUserUpdate user
+
+                Nothing ->
+                    Cmd.none
             )

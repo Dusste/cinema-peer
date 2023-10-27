@@ -66,7 +66,7 @@ init url key =
       , notifications = []
       , sessionStatus = IsLoading
       , error = Nothing
-      , page = urlToPage url
+      , page = urlToPage url IsLoading
       }
     , requestToBackend
     )
@@ -83,8 +83,8 @@ matchRoute =
         ]
 
 
-urlToPage : Url -> Page
-urlToPage url =
+urlToPage : Url -> Session -> Page
+urlToPage url sessionStatus =
     case UrlP.parse matchRoute url of
         Just Home ->
             HomePage
@@ -96,7 +96,16 @@ urlToPage url =
             LoginPage (Login.init |> Tuple.first)
 
         Just (Profile _) ->
-            ProfilePage (Profile.init |> Tuple.first)
+            let
+                maybeName =
+                    case sessionStatus of
+                        LoggedIn { name } ->
+                            Just name
+
+                        _ ->
+                            Nothing
+            in
+            ProfilePage (Profile.init maybeName |> Tuple.first)
 
         Just Search ->
             SearchPage (Search.init |> Tuple.first)
@@ -125,7 +134,7 @@ update msg model =
         UrlClicked urlRequest ->
             case urlRequest of
                 Internal url ->
-                    ( { model | page = urlToPage url }
+                    ( { model | page = urlToPage url model.sessionStatus }
                     , Nav.pushUrl model.key (Url.toString url)
                     )
 
@@ -135,7 +144,7 @@ update msg model =
                     )
 
         UrlChanged url ->
-            ( { model | page = urlToPage url }, Cmd.none )
+            ( { model | page = urlToPage url model.sessionStatus }, Cmd.none )
 
         TriggerLogout ->
             ( { model | sessionStatus = Anonymus }, sendToBackend RequestLogout )
@@ -177,7 +186,12 @@ update msg model =
                         ( modelFromProfile, cmdMsgFromProfile ) =
                             Profile.update profileMsg profileModel
                     in
-                    ( { model | page = ProfilePage modelFromProfile }, Cmd.map GotProfileMsg cmdMsgFromProfile )
+                    ( { model | page = ProfilePage modelFromProfile }
+                    , Cmd.batch
+                        [ Cmd.map GotProfileMsg cmdMsgFromProfile
+                        , Profile.updateBeFromProfile profileMsg modelFromProfile
+                        ]
+                    )
 
                 _ ->
                     ( model, Cmd.none )
@@ -217,6 +231,18 @@ updateFromBackend msg model =
         -- ( model, Cmd.map GotSearchResults (Success movies) )
         ResponseFetchMovies (Err err) ->
             ( model, Cmd.none )
+
+        ResponseUserUpdate { name } ->
+            case model.page of
+                ProfilePage profileModel ->
+                    let
+                        ( modelFromProfile, cmdMsgFromProfile ) =
+                            Profile.update (GotBeProfileMsg name) profileModel
+                    in
+                    ( { model | page = ProfilePage modelFromProfile }, Cmd.map GotProfileMsg cmdMsgFromProfile )
+
+                _ ->
+                    ( model, Cmd.none )
 
 
 

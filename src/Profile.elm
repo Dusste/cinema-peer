@@ -3,6 +3,7 @@ module Profile exposing (..)
 import Html.Styled as Html exposing (Html, text)
 import Html.Styled.Attributes as Attr
 import Html.Styled.Events exposing (onClick, onInput)
+import Lamdera exposing (sendToBackend)
 import Tailwind.Breakpoints as Br
 import Tailwind.Theme as Tw
 import Tailwind.Utilities as Tw
@@ -18,9 +19,9 @@ initModel =
     { nameValue = "" }
 
 
-init : ( Model, Cmd Types.ProfileMsg )
-init =
-    ( initModel, Cmd.none )
+init : Maybe String -> ( Model, Cmd Types.ProfileMsg )
+init maybeName =
+    ( { nameValue = maybeName |> Maybe.withDefault "" }, Cmd.none )
 
 
 update : Types.ProfileMsg -> Model -> ( Model, Cmd Types.ProfileMsg )
@@ -28,6 +29,33 @@ update msg model =
     case msg of
         StoreName nameValue ->
             ( { model | nameValue = nameValue }, Cmd.none )
+
+        GotBeProfileMsg name ->
+            ( { model | nameValue = name }, Cmd.none )
+
+        -- TODO = Since some Msg are handled in `updateBeFromProfile`, we don't want to present duplicate msg's so figure out how to make sense out of this
+        _ ->
+            ( model, Cmd.none )
+
+
+updateBeFromProfile : ProfileMsg -> Model -> Cmd FrontendMsg
+updateBeFromProfile profileMsg profileModel =
+    case profileMsg of
+        SubmitName ->
+            sendToBackend <| RequestUpdateName profileModel.nameValue
+
+        _ ->
+            Cmd.none
+
+
+
+-- updateProfileFromBe : ProfileMsg -> ProfileModel -> Cmd FrontendMsg
+-- updateProfileFromBe profileMsg profileModel =
+--     case profileMsg of
+--         GotBeProfileMsg ->
+--             sendToBackend <| RequestUpdateName profileModel.nameValue
+--         _ ->
+--             Cmd.none
 
 
 view : Model -> Html Types.ProfileMsg
@@ -47,5 +75,5 @@ view model =
                     ]
                 ]
             ]
-        , Html.button [] [ text "Submit" ]
+        , Html.button [ onClick SubmitName ] [ text "Submit" ]
         ]

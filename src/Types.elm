@@ -230,6 +230,8 @@ type LoginMsg
 
 type ProfileMsg
     = StoreName String
+    | SubmitName
+    | GotBeProfileMsg String
 
 
 type SearchMsg
@@ -260,6 +262,7 @@ type ToBackend
     | RequestLogin Email
     | RequestAuth Token
     | RequestLogout
+    | RequestUpdateName String
     | GotSession
 
 
@@ -276,3 +279,4 @@ type ToFrontend
     = NoOpToFrontend
     | ResponseAuth Session String
     | ResponseFetchMovies (Result String (List Movie))
+    | ResponseUserUpdate User
