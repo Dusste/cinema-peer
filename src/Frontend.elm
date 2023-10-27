@@ -8,11 +8,13 @@ import Html.Styled.Events exposing (onClick, onInput)
 import Lamdera exposing (sendToBackend)
 import Login
 import Platform.Cmd as Cmd
+import Process
 import Profile
 import Search
 import Tailwind.Breakpoints as Br
 import Tailwind.Theme as Tw
 import Tailwind.Utilities as Tw
+import Task
 import Time
 import Types exposing (..)
 import Url exposing (Url)
@@ -61,6 +63,7 @@ init url key =
                     sendToBackend GotSession
     in
     ( { key = key
+      , notifications = []
       , sessionStatus = IsLoading
       , error = Nothing
       , page = urlToPage url
@@ -140,6 +143,9 @@ update msg model =
         NoOpFrontendMsg ->
             ( model, Cmd.none )
 
+        HideNotification ->
+            ( { model | notifications = List.drop 1 model.notifications }, Cmd.none )
+
         GotLoginMsg loginMsg ->
             case model.page of
                 LoginPage loginModel ->
@@ -188,7 +194,13 @@ updateFromBackend msg model =
                 _ =
                     Debug.log "NOTIFICATION FROM BE: " notification
             in
-            ( { model | sessionStatus = sessionStatus }, Nav.replaceUrl model.key "/" )
+            ( { model | sessionStatus = sessionStatus, notifications = model.notifications ++ [ notification ] }
+            , Cmd.batch
+                [ Nav.replaceUrl model.key "/"
+                , Process.sleep 4000
+                    |> Task.perform (\_ -> HideNotification)
+                ]
+            )
 
         ResponseFetchMovies (Ok movies) ->
             case model.page of
@@ -238,13 +250,13 @@ content model =
             text "LOADING...."
 
         _ ->
-            Html.div [ Attr.css [ Tw.flex, Tw.flex_col ] ]
+            Html.div [ Attr.css [ Tw.flex, Tw.flex_col, Tw.max_w_screen_lg, Tw.my_10, Tw.mx_auto ] ]
                 [ header model
                 , errorMsg model.error
                 , Html.div []
                     [ case model.page of
                         HomePage ->
-                            Html.div []
+                            Html.div [ Attr.css [ Tw.mt_20 ] ]
                                 [ Html.div []
                                     [ Html.h1 [] [ text "Cinema peer" ]
                                     , Html.p [] [ text "Share movies with your friends" ]
@@ -286,21 +298,28 @@ errorMsg error =
 
 
 header model =
-    Html.nav []
-        [ Html.a [ Attr.href "/" ] [ text "home" ]
-        , Html.a [ Attr.href "/search" ] [ text "search a movie" ]
-        , case model.sessionStatus of
-            LoggedIn _ ->
-                Html.div []
-                    [ Html.a [ Attr.href "", onClick TriggerLogout ] [ text "logout" ]
-                    , Html.a [ Attr.href "/profile/123" ] [ text "profile" ] -- TODO profile id hardcoded
-                    ]
+    Html.div [ Attr.css [ Tw.flex, Tw.justify_end ] ]
+        [ Html.nav [ Attr.css [ Tw.flex, Tw.gap_4 ] ]
+            [ Html.a [ Attr.href "/" ] [ text "home" ]
+            , Html.a [ Attr.href "/search" ] [ text "search a movie" ]
+            , case model.sessionStatus of
+                LoggedIn user ->
+                    let
+                        (Id id) =
+                            user.id
+                    in
+                    Html.div [ Attr.css [ Tw.flex, Tw.gap_4 ] ]
+                        [ Html.a [ Attr.href <| "/profile/" ++ id ] [ text "profile" ] -- TODO profile id hardcoded
+                        , Html.a [ Attr.href "", onClick TriggerLogout ] [ text "logout" ]
+                        ]
 
-            Anonymus ->
-                Html.a [ Attr.href "/login" ] [ text "login / signup" ]
+                Anonymus ->
+                    Html.a [ Attr.href "/login" ] [ text "login / signup" ]
 
-            IsLoading ->
-                text ""
+                IsLoading ->
+                    text ""
+            ]
+        , Html.ul [] (model.notifications |> List.map (\notification -> Html.li [] [ text notification ]))
         ]
 
 

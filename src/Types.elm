@@ -57,7 +57,7 @@ type ResultsState
 
 
 type alias ProfileModel =
-    { emailValue : String }
+    { nameValue : String }
 
 
 type alias LoginModel =
@@ -95,7 +95,7 @@ type alias Movie =
 
 
 type alias User =
-    { id : Id -- TODO do we need ID ?
+    { id : Id
     , name : String
     , email : Email
     , movieLists : List (MovieEntry Movie)
@@ -116,7 +116,7 @@ type Email
 
 
 type Id
-    = Id Int
+    = Id String
 
 
 getLoginToken : Time.Posix -> Token
@@ -125,6 +125,15 @@ getLoginToken currentTime =
         ++ String.fromInt (Time.posixToMillis currentTime)
         |> Sha256.sha256
         |> Token
+
+
+getId : Time.Posix -> Id
+getId currentTime =
+    Env.salt
+        ++ String.fromInt (Time.posixToMillis currentTime)
+        |> Sha256.sha256
+        |> String.left 5
+        |> Id
 
 
 sendEmailToUser : SendEmailConfig -> Cmd BackendMsg
@@ -201,6 +210,7 @@ type alias FrontendModel =
     , sessionStatus : Session
     , error : Maybe String
     , page : Page
+    , notifications : List String
     }
 
 
@@ -219,7 +229,7 @@ type LoginMsg
 
 
 type ProfileMsg
-    = Nja
+    = StoreName String
 
 
 type SearchMsg
@@ -236,6 +246,7 @@ type FrontendMsg
     | GotProfileMsg ProfileMsg
     | GotSearchMsg SearchMsg
     | TriggerLogout
+    | HideNotification
 
 
 

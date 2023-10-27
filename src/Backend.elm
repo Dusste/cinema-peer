@@ -213,13 +213,6 @@ updateFromFrontend sessionId clientId msg model =
                                     _ =
                                         Debug.log "alreadyUser" alreadyUser
 
-                                    -- updateRecord =
-                                    --     Maybe.map (\room -> { room | roomName = roomName })
-                                    -- updateRooms =
-                                    --     Dict.update roomId updateRecord model.rooms
-                                    -- updateConnection =
-                                    --     Maybe.map (\_ -> LoggedIn alreadyUser)
-                                    -- Dict.update sessionId updateConnection model.connections
                                     _ =
                                         Debug.log "Newly updated connection: " updateConnections
                                 in
@@ -232,13 +225,19 @@ updateFromFrontend sessionId clientId msg model =
                                     _ =
                                         Debug.log "its a newly registered user" ""
 
+                                    id =
+                                        getId model.currentTime
+
+                                    newUser =
+                                        { id = id, email = email, name = "", movieLists = [] }
+
                                     updateWithNewUser =
                                         -- TODO do we need ID ?
-                                        Dict.insert sessionId { id = Id 123, email = email, name = "", movieLists = [] } model.users
+                                        Dict.insert sessionId newUser model.users
                                 in
                                 -- Todo - what should be send to new user ?
                                 ( { model | users = updateWithNewUser, connections = updateConnections }
-                                , sendToFrontend sessionId <| ResponseAuth (LoggedIn { id = Id 123, email = email, name = "", movieLists = [] }) "Welcome newly registered user !"
+                                , sendToFrontend sessionId <| ResponseAuth (LoggedIn newUser) "Welcome newly registered user !"
                                 )
 
                     else
