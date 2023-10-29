@@ -21,6 +21,10 @@ initModel =
 
 init : Maybe String -> ( Model, Cmd Types.ProfileMsg )
 init maybeName =
+    let
+        _ =
+            Debug.log "Profile.init " maybeName
+    in
     ( { nameValue = maybeName |> Maybe.withDefault "" }, Cmd.none )
 
 
@@ -30,25 +34,29 @@ update msg model =
         StoreName nameValue ->
             ( { model | nameValue = nameValue }, Cmd.none )
 
-        GotBeProfileMsg name ->
-            ( { model | nameValue = name }, Cmd.none )
-
-        -- TODO = Since some Msg are handled in `updateBeFromProfile`, we don't want to present duplicate msg's so figure out how to make sense out of this
-        _ ->
-            ( model, Cmd.none )
-
-
-updateBeFromProfile : ProfileMsg -> Model -> Cmd FrontendMsg
-updateBeFromProfile profileMsg profileModel =
-    case profileMsg of
+        -- ResponseUserUpdate { name } ->
+        --     let
+        --         _ =
+        --             Debug.log "usao u ResponseUserUpdate in PRfile " name
+        --     in
+        -- ( { model | nameValue = name }, Cmd.none )
         SubmitName ->
-            sendToBackend <| RequestUpdateName profileModel.nameValue
-
-        _ ->
-            Cmd.none
+            ( model, sendToBackend <| RequestUpdateName model.nameValue )
 
 
 
+-- transformProfileMsgToFeMsg : (a -> ProfileMsg) -> b -> Cmd FrontendMsg
+-- transformProfileMsgToFeMsg toMsg payload =
+--     sendToBackend <| payload toMsg
+-- _ ->
+--     ( model, Cmd.none )
+-- updateBeFromProfile : ProfileMsg -> Model -> Cmd FrontendMsg
+-- updateBeFromProfile profileMsg profileModel =
+--     case profileMsg of
+--         SubmitName ->
+--             sendToBackend <| RequestUpdateName profileModel.nameValue
+--         _ ->
+--             Cmd.none
 -- updateProfileFromBe : ProfileMsg -> ProfileModel -> Cmd FrontendMsg
 -- updateProfileFromBe profileMsg profileModel =
 --     case profileMsg of

@@ -34,12 +34,12 @@ type Session
 
 
 type Route
-    = Home
-    | Profile UserId
-    | Login
-    | Search
-    | LoginToken (Maybe Token)
-    | NotFound
+    = HomeRoute
+    | ProfileRoute UserId
+    | LoginRoute
+    | SearchRoute
+    | LoginTokenRoute (Maybe Token)
+    | NotFoundRoute
 
 
 type UserId
@@ -69,6 +69,11 @@ type alias SearchModel =
     , movieValue : String
     , timer : Timer
     }
+
+
+type PageMsgs
+    = ProfileMsg ProfileMsg
+    | SearchMsg SearchMsg
 
 
 type Page
@@ -117,6 +122,80 @@ type Email
 
 type Id
     = Id String
+
+
+type alias FrontendModel =
+    { key : Key
+    , sessionStatus : Session
+    , error : Maybe String
+    , page : Page
+    , notifications : List String
+    }
+
+
+type alias BackendModel =
+    { users : Dict SessionId User
+    , connections : Dict SessionId SessionId -- TODO what should connection contain ? Mybe it can be Set of Strings
+    , currentTime : Time.Posix
+    , pendingAuth : Dict String LoginTokenData -- users that started login journey and got email with token
+    }
+
+
+type LoginMsg
+    = NoOp
+    | StoreEmail String
+    | TryRequestLogin String
+
+
+type ProfileMsg
+    = StoreName String
+    | SubmitName
+
+
+
+-- | ResponseUserUpdate User
+
+
+type SearchMsg
+    = StoreMovie String
+    | Tick Time.Posix
+    | ResponseFetchMovies (Result String (List Movie))
+
+
+type FrontendMsg
+    = UrlClicked UrlRequest
+    | UrlChanged Url
+    | NoOpFrontendMsg
+    | GotLoginMsg LoginMsg
+    | GotProfileMsg ProfileMsg
+    | GotSearchMsg SearchMsg
+    | TriggerLogout
+    | HideNotification
+
+
+type ToBackend
+    = NoOpToBackend
+    | RequestFetchMovies String
+    | RequestLogin Email
+    | RequestAuth Token
+    | RequestLogout
+    | RequestUpdateName String
+    | GotSession
+
+
+type BackendMsg
+    = NoOpBackendMsg
+    | GotMovies (Result Http.Error ( SessionId, List Movie ))
+    | LoginTokenSend (Result SendGrid.Error ())
+    | GetTime Time.Posix
+    | UserConnected SessionId ClientId
+    | UserDisconnected SessionId ClientId
+
+
+type ToFrontend
+    = ResponseAuth Session String
+    | UpdateToPages PageMsgs
+    | GoHome
 
 
 getLoginToken : Time.Posix -> Token
@@ -203,80 +282,3 @@ getLinkToLogin (Token loginToken) =
 tokenToString : Token -> String
 tokenToString (Token token) =
     token
-
-
-type alias FrontendModel =
-    { key : Key
-    , sessionStatus : Session
-    , error : Maybe String
-    , page : Page
-    , notifications : List String
-    }
-
-
-type alias BackendModel =
-    { users : Dict SessionId User
-    , connections : Dict SessionId SessionId -- TODO what should connection contain ? Mybe it can be Set of Strings
-    , currentTime : Time.Posix
-    , pendingAuth : Dict String LoginTokenData -- users that started login journey and got email with token
-    }
-
-
-type LoginMsg
-    = NoOp
-    | StoreEmail String
-    | TryRequestLogin String
-
-
-type ProfileMsg
-    = StoreName String
-    | SubmitName
-    | GotBeProfileMsg String
-
-
-type SearchMsg
-    = StoreMovie String
-    | Tick Time.Posix
-    | GotBeSearchMsg ResultsState
-
-
-type FrontendMsg
-    = UrlClicked UrlRequest
-    | UrlChanged Url
-    | NoOpFrontendMsg
-    | GotLoginMsg LoginMsg
-    | GotProfileMsg ProfileMsg
-    | GotSearchMsg SearchMsg
-    | TriggerLogout
-    | HideNotification
-
-
-
--- | GotSearchResults ResultsState
--- Extend Movie
-
-
-type ToBackend
-    = NoOpToBackend
-    | RequestFetchMovies String
-    | RequestLogin Email
-    | RequestAuth Token
-    | RequestLogout
-    | RequestUpdateName String
-    | GotSession
-
-
-type BackendMsg
-    = NoOpBackendMsg
-    | GotMovies (Result Http.Error ( SessionId, List Movie ))
-    | LoginTokenSend (Result SendGrid.Error ())
-    | GetTime Time.Posix
-    | UserConnected SessionId ClientId
-    | UserDisconnected SessionId ClientId
-
-
-type ToFrontend
-    = NoOpToFrontend
-    | ResponseAuth Session String
-    | ResponseFetchMovies (Result String (List Movie))
-    | ResponseUserUpdate User

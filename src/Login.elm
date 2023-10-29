@@ -37,7 +37,7 @@ update msg model =
             ( model, Cmd.none )
 
         StoreEmail emailValue ->
-            ( { model | emailValue = emailValue }, Cmd.none )
+            ( { model | emailValue = emailValue, error = Nothing }, Cmd.none )
 
         TryRequestLogin emailValue ->
             case Util.parseEmail emailValue of
@@ -48,10 +48,21 @@ update msg model =
                     ( { model | error = Just err, notification = Nothing }, Cmd.none )
 
 
+errorMsg : Maybe String -> Html Types.LoginMsg
+errorMsg error =
+    case error of
+        Just err ->
+            Html.div [] [ text err ]
+
+        Nothing ->
+            text ""
+
+
 view : Model -> Html Types.LoginMsg
 view model =
     Html.div []
-        [ Html.div []
+        [ errorMsg model.error
+        , Html.div []
             [ Html.div []
                 [ Html.p []
                     [ text "Enter your email to login or sing up" ]

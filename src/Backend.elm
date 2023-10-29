@@ -20,6 +20,7 @@ type alias Model =
     BackendModel
 
 
+app : { init : ( Model, Cmd BackendMsg ), update : BackendMsg -> Model -> ( Model, Cmd BackendMsg ), updateFromFrontend : SessionId -> ClientId -> ToBackend -> Model -> ( Model, Cmd BackendMsg ), subscriptions : Model -> Sub BackendMsg }
 app =
     Lamdera.backend
         { init = init
@@ -49,6 +50,11 @@ init =
     )
 
 
+sendToFePage : SessionId -> PageMsgs -> Cmd backendMsg
+sendToFePage sessionId toMsg =
+    sendToFrontend sessionId <| UpdateToPages toMsg
+
+
 update : BackendMsg -> Model -> ( Model, Cmd BackendMsg )
 update msg model =
     case msg of
@@ -57,10 +63,13 @@ update msg model =
 
         GotMovies (Err err) ->
             -- TODO shouldn't send err to everyone
-            ( model, broadcast <| ResponseFetchMovies (Err (buildErrorMessage err)) )
+            ( model, broadcast <| UpdateToPages <| SearchMsg <| ResponseFetchMovies (Err (buildErrorMessage err)) )
 
         GotMovies (Ok ( sessionId, movies )) ->
-            ( model, sendToFrontend sessionId <| ResponseFetchMovies (Ok movies) )
+            ( model
+            , sendToFePage sessionId (SearchMsg (ResponseFetchMovies (Ok movies)))
+              -- sendToFrontend sessionId <| UpdateToPages <| SearchMsg (ResponseFetchMovies (Ok movies))
+            )
 
         LoginTokenSend (Ok ()) ->
             ( model, Cmd.none )
@@ -162,7 +171,6 @@ updateFromFrontend sessionId clientId msg model =
             in
             ( model, sendToFrontend sessionId <| ResponseAuth session "" )
 
-        -- TODO make it Maybe
         RequestFetchMovies movie ->
             ( model, fetchMovie movie sessionId )
 
@@ -194,77 +202,80 @@ updateFromFrontend sessionId clientId msg model =
 
                 updatePendingAuth =
                     Dict.remove tokenString model.pendingAuth
-            in
-            -- TODO its a mess - clean it up !
-            case model.pendingAuth |> Dict.get tokenString of
-                Just { createTime, email } ->
-                    let
-                        _ =
-                            Debug.log "create email" { createTime = createTime, currentTime = model.currentTime }
-                    in
-                    if Time.posixToMillis model.currentTime - Time.posixToMillis createTime < 3600000 then
-                        let
-                            updateConnections =
-                                Dict.insert sessionId sessionId model.connections
-                        in
-                        case model.users |> Dict.get sessionId of
-                            Just alreadyUser ->
+
+                ( updatedModel, cmdMsg ) =
+                    -- TODO its a mess - clean it up !
+                    case model.pendingAuth |> Dict.get tokenString of
+                        Just { createTime, email } ->
+                            let
+                                _ =
+                                    Debug.log "create email" { createTime = createTime, currentTime = model.currentTime }
+                            in
+                            if Time.posixToMillis model.currentTime - Time.posixToMillis createTime < 3600000 then
                                 let
-                                    _ =
-                                        Debug.log "alreadyUser" alreadyUser
-
-                                    _ =
-                                        Debug.log "Newly updated connection: " updateConnections
+                                    updateConnections =
+                                        Dict.insert sessionId sessionId model.connections
                                 in
-                                ( { model | pendingAuth = updatePendingAuth, connections = updateConnections }
-                                , sendToFrontend sessionId <| ResponseAuth (LoggedIn alreadyUser) "Welcome back !"
-                                )
+                                case model.users |> Dict.get sessionId of
+                                    Just alreadyUser ->
+                                        let
+                                            _ =
+                                                Debug.log "alreadyUser" alreadyUser
 
-                            Nothing ->
-                                let
-                                    _ =
-                                        Debug.log "its a newly registered user" ""
+                                            _ =
+                                                Debug.log "Newly updated connection: " updateConnections
+                                        in
+                                        ( { model | pendingAuth = updatePendingAuth, connections = updateConnections }
+                                        , sendToFrontend sessionId <| ResponseAuth (LoggedIn alreadyUser) "Welcome back !"
+                                        )
 
-                                    id =
-                                        getId model.currentTime
+                                    Nothing ->
+                                        let
+                                            _ =
+                                                Debug.log "its a newly registered user" ""
 
-                                    newUser =
-                                        { id = id, email = email, name = "", movieLists = [] }
+                                            id =
+                                                getId model.currentTime
 
-                                    updateWithNewUser =
-                                        -- TODO do we need ID ?
-                                        Dict.insert sessionId newUser model.users
-                                in
-                                -- Todo - what should be send to new user ?
-                                ( { model | users = updateWithNewUser, connections = updateConnections }
-                                , sendToFrontend sessionId <| ResponseAuth (LoggedIn newUser) "Welcome newly registered user !"
-                                )
+                                            newUser =
+                                                { id = id, email = email, name = "", movieLists = [] }
 
-                    else
-                        ( { model | pendingAuth = updatePendingAuth }, sendToFrontend clientId <| ResponseAuth Anonymus "This token has expired" )
+                                            updateWithNewUser =
+                                                -- TODO do we need ID ?
+                                                Dict.insert sessionId newUser model.users
+                                        in
+                                        -- Todo - what should be send to new user ?
+                                        ( { model | users = updateWithNewUser, connections = updateConnections }
+                                        , sendToFrontend sessionId <| ResponseAuth (LoggedIn newUser) "Welcome newly registered user !"
+                                        )
 
-                Nothing ->
-                    let
-                        updateModel =
-                            { model | pendingAuth = updatePendingAuth }
-                    in
-                    case model.connections |> Dict.get sessionId of
-                        Just usersSessionId ->
-                            case Dict.get usersSessionId model.users of
-                                Just userInfo ->
-                                    ( updateModel
-                                    , sendToFrontend sessionId <| ResponseAuth (LoggedIn userInfo) "[We are ignoring the fact the you are trying to connect with same token] User already logged in"
-                                    )
+                            else
+                                ( { model | pendingAuth = updatePendingAuth }, sendToFrontend clientId <| ResponseAuth Anonymus "This token has expired" )
+
+                        Nothing ->
+                            let
+                                updateModel =
+                                    { model | pendingAuth = updatePendingAuth }
+                            in
+                            case model.connections |> Dict.get sessionId of
+                                Just usersSessionId ->
+                                    case Dict.get usersSessionId model.users of
+                                        Just userInfo ->
+                                            ( updateModel
+                                            , sendToFrontend sessionId <| ResponseAuth (LoggedIn userInfo) "[We are ignoring the fact the you are trying to connect with same token] User already logged in"
+                                            )
+
+                                        Nothing ->
+                                            ( updateModel
+                                            , sendToFrontend sessionId <| ResponseAuth Anonymus "Token already used"
+                                            )
 
                                 Nothing ->
                                     ( updateModel
                                     , sendToFrontend sessionId <| ResponseAuth Anonymus "Token already used"
                                     )
-
-                        Nothing ->
-                            ( updateModel
-                            , sendToFrontend sessionId <| ResponseAuth Anonymus "Token already used"
-                            )
+            in
+            ( updatedModel, Cmd.batch [ cmdMsg, sendToFrontend sessionId GoHome ] )
 
         -- Nothing ->
         --     ( model, sendToFrontend clientId InvalidToken )
@@ -284,7 +295,8 @@ updateFromFrontend sessionId clientId msg model =
             ( { model | users = updatedUsers }
             , case Dict.get sessionId updatedUsers of
                 Just user ->
-                    sendToFrontend sessionId <| ResponseUserUpdate user
+                    -- sendToFePage sessionId (ProfileMsg (ResponseUserUpdate user))
+                    sendToFrontend sessionId <| ResponseAuth (LoggedIn user) "Name successfully saved !"
 
                 Nothing ->
                     Cmd.none

@@ -26,6 +26,7 @@ type alias Model =
     FrontendModel
 
 
+app : { init : Url -> Key -> ( Model, Cmd FrontendMsg ), view : Model -> Browser.Document FrontendMsg, update : FrontendMsg -> Model -> ( Model, Cmd FrontendMsg ), updateFromBackend : ToFrontend -> Model -> ( Model, Cmd FrontendMsg ), subscriptions : Model -> Sub FrontendMsg, onUrlRequest : UrlRequest -> FrontendMsg, onUrlChange : Url -> FrontendMsg }
 app =
     Lamdera.frontend
         { init = init
@@ -47,7 +48,7 @@ init url key =
                     Debug.log "requestToBackend" (UrlP.parse matchRoute url)
             in
             case UrlP.parse matchRoute url of
-                Just (LoginToken maybeToken) ->
+                Just (LoginTokenRoute maybeToken) ->
                     let
                         _ =
                             Debug.log "usao u login" maybeToken
@@ -75,27 +76,27 @@ init url key =
 matchRoute : UrlP.Parser (Route -> a) a
 matchRoute =
     UrlP.oneOf
-        [ UrlP.map Home UrlP.top
-        , UrlP.map LoginToken (s "loginToken" <?> parserToken)
-        , UrlP.map Login (s "login")
-        , UrlP.map Search (s "search")
-        , UrlP.map Profile (s "profile" </> userIdParser)
+        [ UrlP.map HomeRoute UrlP.top
+        , UrlP.map LoginTokenRoute (s "loginToken" <?> parserToken)
+        , UrlP.map LoginRoute (s "login")
+        , UrlP.map SearchRoute (s "search")
+        , UrlP.map ProfileRoute (s "profile" </> userIdParser)
         ]
 
 
 urlToPage : Url -> Session -> Page
 urlToPage url sessionStatus =
     case UrlP.parse matchRoute url of
-        Just Home ->
+        Just HomeRoute ->
             HomePage
 
-        Just (LoginToken _) ->
+        Just (LoginTokenRoute _) ->
             HomePage
 
-        Just Login ->
+        Just LoginRoute ->
             LoginPage (Login.init |> Tuple.first)
 
-        Just (Profile _) ->
+        Just (ProfileRoute _) ->
             let
                 maybeName =
                     case sessionStatus of
@@ -107,7 +108,7 @@ urlToPage url sessionStatus =
             in
             ProfilePage (Profile.init maybeName |> Tuple.first)
 
-        Just Search ->
+        Just SearchRoute ->
             SearchPage (Search.init |> Tuple.first)
 
         _ ->
@@ -158,11 +159,7 @@ update msg model =
         GotLoginMsg loginMsg ->
             case model.page of
                 LoginPage loginModel ->
-                    let
-                        ( modelFromLogin, cmdMsgFromLogin ) =
-                            Login.update loginMsg loginModel
-                    in
-                    ( { model | page = LoginPage modelFromLogin }, Cmd.map GotLoginMsg cmdMsgFromLogin )
+                    updatePageTemplate model LoginPage (Login.update loginMsg loginModel) GotLoginMsg
 
                 _ ->
                     ( model, Cmd.none )
@@ -170,11 +167,7 @@ update msg model =
         GotSearchMsg searchMsg ->
             case model.page of
                 SearchPage searchModel ->
-                    let
-                        ( modelFromSearch, cmdMsgFromSearch ) =
-                            Search.update searchMsg searchModel
-                    in
-                    ( { model | page = SearchPage modelFromSearch }, Cmd.map GotSearchMsg cmdMsgFromSearch )
+                    updatePageTemplate model SearchPage (Search.update searchMsg searchModel) GotSearchMsg
 
                 _ ->
                     ( model, Cmd.none )
@@ -182,16 +175,7 @@ update msg model =
         GotProfileMsg profileMsg ->
             case model.page of
                 ProfilePage profileModel ->
-                    let
-                        ( modelFromProfile, cmdMsgFromProfile ) =
-                            Profile.update profileMsg profileModel
-                    in
-                    ( { model | page = ProfilePage modelFromProfile }
-                    , Cmd.batch
-                        [ Cmd.map GotProfileMsg cmdMsgFromProfile
-                        , Profile.updateBeFromProfile profileMsg modelFromProfile
-                        ]
-                    )
+                    updatePageTemplate model ProfilePage (Profile.update profileMsg profileModel) GotProfileMsg
 
                 _ ->
                     ( model, Cmd.none )
@@ -200,63 +184,48 @@ update msg model =
 updateFromBackend : ToFrontend -> Model -> ( Model, Cmd FrontendMsg )
 updateFromBackend msg model =
     case msg of
-        NoOpToFrontend ->
-            ( model, Cmd.none )
-
         ResponseAuth sessionStatus notification ->
             let
                 _ =
                     Debug.log "NOTIFICATION FROM BE: " notification
             in
             ( { model | sessionStatus = sessionStatus, notifications = model.notifications ++ [ notification ] }
-            , Cmd.batch
-                [ Nav.replaceUrl model.key "/"
-                , Process.sleep 4000
-                    |> Task.perform (\_ -> HideNotification)
-                ]
+            , Process.sleep 3000 |> Task.perform (\_ -> HideNotification)
             )
 
-        ResponseFetchMovies (Ok movies) ->
-            case model.page of
-                SearchPage searchModel ->
+        UpdateToPages pageMsg ->
+            case pageMsg of
+                ProfileMsg profileMsg ->
                     let
-                        ( modelFromSearch, cmdMsgFromSearch ) =
-                            Search.update (GotBeSearchMsg (Success movies)) searchModel
+                        _ =
+                            Debug.log "UpdateToPages in FE: " ( model.page, profileMsg )
                     in
-                    ( { model | page = SearchPage modelFromSearch }, Cmd.map GotSearchMsg cmdMsgFromSearch )
+                    case model.page of
+                        ProfilePage profileModel ->
+                            updatePageTemplate model ProfilePage (Profile.update profileMsg profileModel) GotProfileMsg
 
-                _ ->
-                    ( model, Cmd.none )
+                        _ ->
+                            ( model, Cmd.none )
 
-        -- ( model, Cmd.map GotSearchResults (Success movies) )
-        ResponseFetchMovies (Err err) ->
-            ( model, Cmd.none )
+                SearchMsg searchMsg ->
+                    case model.page of
+                        SearchPage searchModel ->
+                            updatePageTemplate model SearchPage (Search.update searchMsg searchModel) GotSearchMsg
 
-        ResponseUserUpdate { name } ->
-            case model.page of
-                ProfilePage profileModel ->
-                    let
-                        ( modelFromProfile, cmdMsgFromProfile ) =
-                            Profile.update (GotBeProfileMsg name) profileModel
-                    in
-                    ( { model | page = ProfilePage modelFromProfile }, Cmd.map GotProfileMsg cmdMsgFromProfile )
+                        _ ->
+                            ( model, Cmd.none )
 
-                _ ->
-                    ( model, Cmd.none )
+        GoHome ->
+            ( model, Nav.replaceUrl model.key "/" )
 
 
-
--- ( { model | resultsState = Success movies, timer = TimerOff }, Cmd.none )
--- GotBeSearchMsg searchMsg ->
---     case model.page of
---         SearchPage searchModel ->
---             let
---                 ( modelFromSearch, cmdMsgFromSearch ) =
---                     Search.update searchMsg searchModel
---             in
---             ( { model | page = SearchPage modelFromSearch }, Cmd.map GotSearchMsg cmdMsgFromSearch )
---         _ ->
---             ( model, Cmd.none )
+updatePageTemplate : Model -> (moduleModel -> Page) -> ( moduleModel, Cmd moduleMsg ) -> (moduleMsg -> FrontendMsg) -> ( Model, Cmd FrontendMsg )
+updatePageTemplate feModel toPage toUpdateModule gotPageMsg =
+    let
+        ( modelFromPage, cmdMsgFromPage ) =
+            toUpdateModule
+    in
+    ( { feModel | page = toPage modelFromPage }, Cmd.map gotPageMsg cmdMsgFromPage )
 
 
 view : Model -> Browser.Document FrontendMsg
@@ -314,6 +283,7 @@ content model =
                 ]
 
 
+errorMsg : Maybe String -> Html FrontendMsg
 errorMsg error =
     case error of
         Just err ->
@@ -323,6 +293,7 @@ errorMsg error =
             text ""
 
 
+header : Model -> Html FrontendMsg
 header model =
     Html.div [ Attr.css [ Tw.flex, Tw.justify_end ] ]
         [ Html.nav [ Attr.css [ Tw.flex, Tw.gap_4 ] ]

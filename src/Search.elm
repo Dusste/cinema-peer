@@ -63,11 +63,16 @@ update msg model =
                         Cmd.none
                     )
 
-        GotBeSearchMsg resultsState ->
-            ( { model | resultsState = resultsState, timer = TimerOff }, Cmd.none )
+        ResponseFetchMovies (Ok movies) ->
+            ( { model | resultsState = Success movies, timer = TimerOff }, Cmd.none )
+
+        ResponseFetchMovies (Err err) ->
+            ( { model | timer = TimerOff }, Cmd.none )
 
 
 
+-- GotBeSearchMsg resultsState ->
+--     ( { model | resultsState = resultsState, timer = TimerOff }, Cmd.none )
 -- ResponseFetchMovies (Err _) ->
 --     ( { model | timer = TimerOff }, Cmd.none )
 -- ResponseFetchMovies (Ok movies) ->
