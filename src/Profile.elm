@@ -1,9 +1,11 @@
 module Profile exposing (..)
 
+import Dict exposing (Dict)
 import Html.Styled as Html exposing (Html, text)
 import Html.Styled.Attributes as Attr
 import Html.Styled.Events exposing (onClick, onInput)
 import Lamdera exposing (sendToBackend)
+import Set
 import Tailwind.Breakpoints as Br
 import Tailwind.Theme as Tw
 import Tailwind.Utilities as Tw
@@ -16,23 +18,19 @@ type alias Model =
 
 initModel : Model
 initModel =
-    { nameValue = "" }
+    { name = "", movieLists = Dict.empty }
 
 
-init : Maybe String -> ( Model, Cmd Types.ProfileMsg )
-init maybeName =
-    let
-        _ =
-            Debug.log "Profile.init " maybeName
-    in
-    ( { nameValue = maybeName |> Maybe.withDefault "" }, Cmd.none )
+init : User -> ( Model, Cmd Types.ProfileMsg )
+init { name, movieLists } =
+    ( { name = name, movieLists = movieLists }, Cmd.none )
 
 
 update : Types.ProfileMsg -> Model -> ( Model, Cmd Types.ProfileMsg )
 update msg model =
     case msg of
         StoreName nameValue ->
-            ( { model | nameValue = nameValue }, Cmd.none )
+            ( { model | name = nameValue }, Cmd.none )
 
         -- ResponseUserUpdate { name } ->
         --     let
@@ -41,7 +39,7 @@ update msg model =
         --     in
         -- ( { model | nameValue = name }, Cmd.none )
         SubmitName ->
-            ( model, sendToBackend <| RequestUpdateName model.nameValue )
+            ( model, sendToBackend <| RequestUpdateName model.name )
 
 
 
@@ -70,18 +68,50 @@ view : Model -> Html Types.ProfileMsg
 view model =
     Html.div []
         [ Html.h2 [] [ text "Some stuff about you" ]
-        , Html.form []
+        , Html.div []
             [ Html.fieldset []
                 [ Html.label [ Attr.for "email" ]
                     [ text "Name"
                     , Html.input
                         [ Attr.id "email"
                         , onInput StoreName
-                        , Attr.value model.nameValue
+                        , Attr.value model.name
                         ]
                         []
                     ]
                 ]
+            , Html.button [ onClick SubmitName ] [ text "Submit" ]
             ]
-        , Html.button [ onClick SubmitName ] [ text "Submit" ]
+        , Html.div []
+            [ Html.h3 [] [ text "Your Movie Lists " ]
+            , Html.ul
+                []
+                (model.movieLists
+                    |> Dict.toList
+                    |> List.map
+                        (\( listName, maybeListData ) ->
+                            Html.li []
+                                [ Html.div []
+                                    [ Html.p [] [ text "List Name: " ]
+                                    , Html.h3 [] [ text listName ]
+                                    ]
+                                , case maybeListData of
+                                    Just movieData ->
+                                        Html.div []
+                                            [ Html.div []
+                                                [ Html.p [] [ text "Shared with: " ]
+                                                , Html.ul [] (movieData.sharedWith |> Set.toList |> List.map (\friendsEmail -> Html.li [] [ text friendsEmail ]))
+                                                ]
+                                            , Html.div []
+                                                [ Html.p [] [ text "Movies: " ]
+                                                , Html.ul [] (movieData.movieList |> List.map (\{ title } -> Html.li [] [ text title ]))
+                                                ]
+                                            ]
+
+                                    Nothing ->
+                                        text ""
+                                ]
+                        )
+                )
+            ]
         ]

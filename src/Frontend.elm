@@ -64,10 +64,13 @@ init url key =
                     sendToBackend GotSession
     in
     ( { key = key
+      , url = url
       , notifications = []
       , sessionStatus = IsLoading
       , error = Nothing
       , page = urlToPage url IsLoading
+      , showCreateListModal = False
+      , newListName = ""
       }
     , requestToBackend
     )
@@ -86,6 +89,10 @@ matchRoute =
 
 urlToPage : Url -> Session -> Page
 urlToPage url sessionStatus =
+    let
+        _ =
+            Debug.log "urlToPage" ( url, sessionStatus )
+    in
     case UrlP.parse matchRoute url of
         Just HomeRoute ->
             HomePage
@@ -97,16 +104,12 @@ urlToPage url sessionStatus =
             LoginPage (Login.init |> Tuple.first)
 
         Just (ProfileRoute _) ->
-            let
-                maybeName =
-                    case sessionStatus of
-                        LoggedIn { name } ->
-                            Just name
+            case sessionStatus of
+                LoggedIn user ->
+                    ProfilePage (Profile.init user |> Tuple.first)
 
-                        _ ->
-                            Nothing
-            in
-            ProfilePage (Profile.init maybeName |> Tuple.first)
+                _ ->
+                    NotFoundPage
 
         Just SearchRoute ->
             SearchPage (Search.init |> Tuple.first)
@@ -150,11 +153,25 @@ update msg model =
         TriggerLogout ->
             ( { model | sessionStatus = Anonymus }, sendToBackend RequestLogout )
 
-        NoOpFrontendMsg ->
-            ( model, Cmd.none )
-
         HideNotification ->
             ( { model | notifications = List.drop 1 model.notifications }, Cmd.none )
+
+        OpenNewListModal ->
+            ( { model | showCreateListModal = model.showCreateListModal |> not }, Cmd.none )
+
+        CreateNewList ->
+            let
+                trimmedListName =
+                    String.trim model.newListName
+            in
+            if String.isEmpty trimmedListName then
+                ( model, Cmd.none )
+
+            else
+                ( { model | showCreateListModal = model.showCreateListModal |> not }, sendToBackend <| RequestNewList trimmedListName )
+
+        StoreNewListName newListName ->
+            ( { model | newListName = newListName }, Cmd.none )
 
         GotLoginMsg loginMsg ->
             case model.page of
@@ -187,9 +204,13 @@ updateFromBackend msg model =
         ResponseAuth sessionStatus notification ->
             let
                 _ =
-                    Debug.log "NOTIFICATION FROM BE: " notification
+                    Debug.log "NOTIFICATION FROM BE: " ( sessionStatus, notification )
             in
-            ( { model | sessionStatus = sessionStatus, notifications = model.notifications ++ [ notification ] }
+            ( { model
+                | sessionStatus = sessionStatus
+                , notifications = model.notifications ++ [ notification ]
+                , page = urlToPage model.url sessionStatus
+              }
             , Process.sleep 3000 |> Task.perform (\_ -> HideNotification)
             )
 
@@ -295,28 +316,52 @@ errorMsg error =
 
 header : Model -> Html FrontendMsg
 header model =
-    Html.div [ Attr.css [ Tw.flex, Tw.justify_end ] ]
-        [ Html.nav [ Attr.css [ Tw.flex, Tw.gap_4 ] ]
-            [ Html.a [ Attr.href "/" ] [ text "home" ]
-            , Html.a [ Attr.href "/search" ] [ text "search a movie" ]
-            , case model.sessionStatus of
-                LoggedIn user ->
-                    let
-                        (Id id) =
-                            user.id
-                    in
-                    Html.div [ Attr.css [ Tw.flex, Tw.gap_4 ] ]
-                        [ Html.a [ Attr.href <| "/profile/" ++ id ] [ text "profile" ] -- TODO profile id hardcoded
-                        , Html.a [ Attr.href "", onClick TriggerLogout ] [ text "logout" ]
-                        ]
+    Html.div [ Attr.css [ Tw.flex ] ]
+        [ Html.nav [ Attr.css [ Tw.flex, Tw.gap_4, Tw.w_full, Tw.justify_between ] ]
+            [ Html.div [ Attr.css [ Tw.flex, Tw.gap_4 ] ]
+                [ Html.a [ Attr.href "/" ] [ text "CINEMA_PEER_LOGO" ]
+                , Html.a [ Attr.href "/search" ] [ text "search a movie" ]
+                ]
+            , Html.div [ Attr.css [ Tw.flex, Tw.gap_4 ] ]
+                [ case model.sessionStatus of
+                    LoggedIn user ->
+                        let
+                            (Id id) =
+                                user.id
+                        in
+                        Html.div [ Attr.css [ Tw.flex, Tw.gap_4 ] ]
+                            [ Html.a [ Attr.href <| "/profile/" ++ id ] [ text "profile" ] -- TODO profile id hardcoded
+                            , newListTooltip model.showCreateListModal
+                            , Html.a [ Attr.href "", onClick TriggerLogout ] [ text "logout" ]
+                            ]
 
-                Anonymus ->
-                    Html.a [ Attr.href "/login" ] [ text "login / signup" ]
+                    Anonymus ->
+                        Html.a [ Attr.href "/login" ] [ text "login / signup" ]
 
-                IsLoading ->
-                    text ""
+                    IsLoading ->
+                        text ""
+                ]
             ]
         , Html.ul [] (model.notifications |> List.map (\notification -> Html.li [] [ text notification ]))
+        ]
+
+
+newListTooltip : Bool -> Html FrontendMsg
+newListTooltip showCreateListModal =
+    Html.div [ Attr.css [ Tw.cursor_pointer, Tw.relative ] ]
+        [ Html.div [ onClick OpenNewListModal ] [ text "+ list" ]
+        , if showCreateListModal then
+            Html.div [ Attr.css [ Tw.absolute ] ]
+                [ Html.p [] [ text "Create new movie list" ]
+                , Html.div []
+                    [ Html.input [ Attr.type_ "text", onInput StoreNewListName ] []
+                    , Html.button [ onClick OpenNewListModal ] [ text "Cancel" ]
+                    , Html.button [ onClick CreateNewList ] [ text "Submit" ]
+                    ]
+                ]
+
+          else
+            text ""
         ]
 
 

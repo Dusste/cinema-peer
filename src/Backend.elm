@@ -238,7 +238,7 @@ updateFromFrontend sessionId clientId msg model =
                                                 getId model.currentTime
 
                                             newUser =
-                                                { id = id, email = email, name = "", movieLists = [] }
+                                                { id = id, email = email, name = "", movieLists = Dict.empty }
 
                                             updateWithNewUser =
                                                 -- TODO do we need ID ?
@@ -297,6 +297,23 @@ updateFromFrontend sessionId clientId msg model =
                 Just user ->
                     -- sendToFePage sessionId (ProfileMsg (ResponseUserUpdate user))
                     sendToFrontend sessionId <| ResponseAuth (LoggedIn user) "Name successfully saved !"
+
+                Nothing ->
+                    Cmd.none
+            )
+
+        RequestNewList newListName ->
+            let
+                updateUser =
+                    Maybe.map (\u -> { u | movieLists = Dict.insert newListName Nothing u.movieLists })
+
+                updatedUsers =
+                    Dict.update sessionId updateUser model.users
+            in
+            ( { model | users = updatedUsers }
+            , case Dict.get sessionId updatedUsers of
+                Just user ->
+                    sendToFrontend sessionId <| ResponseAuth (LoggedIn user) ("New list called '" ++ newListName ++ "' created !")
 
                 Nothing ->
                     Cmd.none

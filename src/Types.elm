@@ -11,6 +11,7 @@ import Http
 import Lamdera exposing (ClientId, SessionId)
 import List.Nonempty
 import SendGrid
+import Set exposing (Set)
 import Sha256
 import String.Nonempty exposing (NonemptyString(..))
 import Time
@@ -57,7 +58,9 @@ type ResultsState
 
 
 type alias ProfileModel =
-    { nameValue : String }
+    { name : String
+    , movieLists : Dict MovieListName (Maybe MovieListData)
+    }
 
 
 type alias LoginModel =
@@ -84,12 +87,6 @@ type Page
     | NotFoundPage
 
 
-type alias MovieEntry a =
-    { a
-        | sharedWith : List SessionId
-    }
-
-
 type alias Movie =
     { id : Int
     , overview : String
@@ -103,8 +100,19 @@ type alias User =
     { id : Id
     , name : String
     , email : Email
-    , movieLists : List (MovieEntry Movie)
+    , movieLists : Dict MovieListName (Maybe MovieListData)
     }
+
+
+type alias MovieListData =
+    { sharedWith : Set String --  friends Email ?
+    , movieList : List Movie
+    , listId : Int
+    }
+
+
+type alias MovieListName =
+    String
 
 
 type alias LoginTokenData =
@@ -126,9 +134,12 @@ type Id
 
 type alias FrontendModel =
     { key : Key
+    , url : Url
     , sessionStatus : Session
     , error : Maybe String
     , page : Page
+    , showCreateListModal : Bool
+    , newListName : String
     , notifications : List String
     }
 
@@ -165,12 +176,14 @@ type SearchMsg
 type FrontendMsg
     = UrlClicked UrlRequest
     | UrlChanged Url
-    | NoOpFrontendMsg
     | GotLoginMsg LoginMsg
     | GotProfileMsg ProfileMsg
     | GotSearchMsg SearchMsg
     | TriggerLogout
     | HideNotification
+    | OpenNewListModal
+    | StoreNewListName String
+    | CreateNewList
 
 
 type ToBackend
@@ -180,6 +193,7 @@ type ToBackend
     | RequestAuth Token
     | RequestLogout
     | RequestUpdateName String
+    | RequestNewList String
     | GotSession
 
 
