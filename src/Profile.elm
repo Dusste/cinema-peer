@@ -10,6 +10,7 @@ import Tailwind.Breakpoints as Br
 import Tailwind.Theme as Tw
 import Tailwind.Utilities as Tw
 import Types exposing (..)
+import Url exposing (Url)
 
 
 type alias Model =
@@ -18,12 +19,12 @@ type alias Model =
 
 initModel : Model
 initModel =
-    { name = "", movieLists = Dict.empty }
+    { name = "", movieLists = Dict.empty, newListName = "", id = Nothing }
 
 
 init : User -> ( Model, Cmd Types.ProfileMsg )
-init { name, movieLists } =
-    ( { name = name, movieLists = movieLists }, Cmd.none )
+init { name, movieLists, id } =
+    ( { name = name, movieLists = movieLists, newListName = "", id = Just id }, Cmd.none )
 
 
 update : Types.ProfileMsg -> Model -> ( Model, Cmd Types.ProfileMsg )
@@ -32,36 +33,22 @@ update msg model =
         StoreName nameValue ->
             ( { model | name = nameValue }, Cmd.none )
 
-        -- ResponseUserUpdate { name } ->
-        --     let
-        --         _ =
-        --             Debug.log "usao u ResponseUserUpdate in PRfile " name
-        --     in
-        -- ( { model | nameValue = name }, Cmd.none )
         SubmitName ->
             ( model, sendToBackend <| RequestUpdateName model.name )
 
+        StoreNewListFromProfile str ->
+            ( { model | newListName = str }, Cmd.none )
 
+        CreateNewListFromProfile ->
+            let
+                trimmedListName =
+                    String.trim model.newListName
+            in
+            if String.isEmpty trimmedListName then
+                ( model, Cmd.none )
 
--- transformProfileMsgToFeMsg : (a -> ProfileMsg) -> b -> Cmd FrontendMsg
--- transformProfileMsgToFeMsg toMsg payload =
---     sendToBackend <| payload toMsg
--- _ ->
---     ( model, Cmd.none )
--- updateBeFromProfile : ProfileMsg -> Model -> Cmd FrontendMsg
--- updateBeFromProfile profileMsg profileModel =
---     case profileMsg of
---         SubmitName ->
---             sendToBackend <| RequestUpdateName profileModel.nameValue
---         _ ->
---             Cmd.none
--- updateProfileFromBe : ProfileMsg -> ProfileModel -> Cmd FrontendMsg
--- updateProfileFromBe profileMsg profileModel =
---     case profileMsg of
---         GotBeProfileMsg ->
---             sendToBackend <| RequestUpdateName profileModel.nameValue
---         _ ->
---             Cmd.none
+            else
+                ( { model | newListName = "" }, sendToBackend <| RequestNewList trimmedListName )
 
 
 view : Model -> Html Types.ProfileMsg
@@ -84,34 +71,62 @@ view model =
             ]
         , Html.div []
             [ Html.h3 [] [ text "Your Movie Lists " ]
-            , Html.ul
-                []
-                (model.movieLists
-                    |> Dict.toList
-                    |> List.map
-                        (\( listName, maybeListData ) ->
-                            Html.li []
-                                [ Html.div []
-                                    [ Html.p [] [ text "List Name: " ]
-                                    , Html.h3 [] [ text listName ]
-                                    ]
-                                , case maybeListData of
-                                    Just movieData ->
+            , let
+                noLists =
+                    model.movieLists |> Dict.isEmpty
+              in
+              if noLists then
+                Html.div []
+                    [ Html.p [] [ text "You don't have any movie lists yet. Create one ?" ]
+                    , Html.div [ Attr.css [ Tw.absolute ] ]
+                        [ Html.p [] [ text "Create new movie list" ]
+                        , Html.div []
+                            [ Html.input [ Attr.type_ "text", onInput StoreNewListFromProfile ] []
+                            , Html.button [ onClick CreateNewListFromProfile ] [ text "Submit" ]
+                            ]
+                        ]
+                    ]
+
+              else
+                Html.ul []
+                    (model.movieLists
+                        |> Dict.toList
+                        |> List.map
+                            (\( listName, listData ) ->
+                                let
+                                    isMovieListEmpty =
+                                        List.isEmpty listData.listOfMovies
+                                in
+                                Html.li []
+                                    [ Html.div []
+                                        [ Html.p [] [ text "List Name: " ]
+                                        , Html.h3 [] [ text listName ]
+                                        ]
+                                    , if isMovieListEmpty then
+                                        Html.div []
+                                            [ Html.p [] [ text "You list is currently empty" ]
+                                            , Html.a [ Attr.href "/search" ] [ text "add a movie" ]
+                                            ]
+
+                                      else
+                                        let
+                                            profilePartOfUrl =
+                                                case model.id of
+                                                    Just (Id id) ->
+                                                        "/profile/" ++ id ++ "/list/" ++ listData.listId
+
+                                                    Nothing ->
+                                                        "/home"
+                                        in
                                         Html.div []
                                             [ Html.div []
                                                 [ Html.p [] [ text "Shared with: " ]
-                                                , Html.ul [] (movieData.sharedWith |> Set.toList |> List.map (\friendsEmail -> Html.li [] [ text friendsEmail ]))
+                                                , Html.ul [] (listData.sharedWith |> Set.toList |> List.map (\friendsEmail -> Html.li [] [ text friendsEmail ]))
                                                 ]
-                                            , Html.div []
-                                                [ Html.p [] [ text "Movies: " ]
-                                                , Html.ul [] (movieData.movieList |> List.map (\{ title } -> Html.li [] [ text title ]))
-                                                ]
+                                            , Html.a [ Attr.href <| profilePartOfUrl ] [ text "view list" ]
                                             ]
-
-                                    Nothing ->
-                                        text ""
-                                ]
-                        )
-                )
+                                    ]
+                            )
+                    )
             ]
         ]

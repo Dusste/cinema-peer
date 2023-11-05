@@ -1,19 +1,17 @@
 module Backend exposing (..)
 
-import Dict
-import EmailAddress exposing (EmailAddress)
+import Dict exposing (Dict)
+import EmailAddress
 import Env
 import Http
 import Json.Decode as Decode exposing (Decoder)
-import Json.Decode.Pipeline exposing (hardcoded, optional, required)
+import Json.Decode.Pipeline exposing (optional, required)
 import Lamdera exposing (ClientId, SessionId, broadcast, onConnect, onDisconnect, sendToFrontend)
-import Lamdera.Wire exposing (encodeTriple)
+import Set
 import String.Nonempty exposing (NonemptyString(..))
-import Task
 import Time
 import Types exposing (..)
 import Url
-import Util
 
 
 type alias Model =
@@ -35,7 +33,7 @@ subscriptions _ =
     Sub.batch
         [ onConnect UserConnected
         , onDisconnect UserDisconnected
-        , Time.every 10000 GetTime
+        , Time.every 1000 GetTime
         ]
 
 
@@ -68,24 +66,15 @@ update msg model =
         GotMovies (Ok ( sessionId, movies )) ->
             ( model
             , sendToFePage sessionId (SearchMsg (ResponseFetchMovies (Ok movies)))
-              -- sendToFrontend sessionId <| UpdateToPages <| SearchMsg (ResponseFetchMovies (Ok movies))
             )
 
         LoginTokenSend (Ok ()) ->
             ( model, Cmd.none )
 
         LoginTokenSend (Err err) ->
-            let
-                _ =
-                    Debug.log "Dusan" err
-            in
             ( model, Cmd.none )
 
         GetTime time ->
-            let
-                _ =
-                    Debug.log "GET TIME" Time.posixToMillis
-            in
             ( { model | currentTime = time }, Cmd.none )
 
         UserConnected sessionId clientId ->
@@ -156,20 +145,23 @@ updateFromFrontend sessionId clientId msg model =
 
         GotSession ->
             let
-                session =
-                    case model.connections |> Dict.get sessionId of
-                        Just usersSessionId ->
-                            case Dict.get usersSessionId model.users of
-                                Just userInfo ->
-                                    LoggedIn userInfo
+                maybeUser =
+                    model.connections
+                        |> Dict.get sessionId
+                        |> Maybe.andThen
+                            (\usersSessionId ->
+                                Dict.get usersSessionId model.users
+                            )
 
-                                Nothing ->
-                                    Anonymus
+                cmd =
+                    case maybeUser of
+                        Just s ->
+                            sendToFrontend sessionId <| ResponseAuth (LoggedIn s) Nothing
 
                         Nothing ->
-                            Anonymus
+                            sendToFrontend sessionId <| ResponseAuth Anonymus Nothing
             in
-            ( model, sendToFrontend sessionId <| ResponseAuth session "" )
+            ( model, cmd )
 
         RequestFetchMovies movie ->
             ( model, fetchMovie movie sessionId )
@@ -194,127 +186,239 @@ updateFromFrontend sessionId clientId msg model =
                 tokenString =
                     tokenToString token
 
-                _ =
-                    Debug.log "PENDING AUTH: " model.pendingAuth
-
-                _ =
-                    Debug.log "incoming token:" tokenString
-
                 updatePendingAuth =
                     Dict.remove tokenString model.pendingAuth
 
                 ( updatedModel, cmdMsg ) =
-                    -- TODO its a mess - clean it up !
                     case model.pendingAuth |> Dict.get tokenString of
                         Just { createTime, email } ->
-                            let
-                                _ =
-                                    Debug.log "create email" { createTime = createTime, currentTime = model.currentTime }
-                            in
                             if Time.posixToMillis model.currentTime - Time.posixToMillis createTime < 3600000 then
+                                -- User have 1 hour window to use login token
                                 let
                                     updateConnections =
                                         Dict.insert sessionId sessionId model.connections
                                 in
                                 case model.users |> Dict.get sessionId of
                                     Just alreadyUser ->
-                                        let
-                                            _ =
-                                                Debug.log "alreadyUser" alreadyUser
-
-                                            _ =
-                                                Debug.log "Newly updated connection: " updateConnections
-                                        in
                                         ( { model | pendingAuth = updatePendingAuth, connections = updateConnections }
-                                        , sendToFrontend sessionId <| ResponseAuth (LoggedIn alreadyUser) "Welcome back !"
+                                        , sendToFrontend sessionId <| ResponseAuth (LoggedIn alreadyUser) (Just "Welcome back !")
                                         )
 
                                     Nothing ->
                                         let
-                                            _ =
-                                                Debug.log "its a newly registered user" ""
-
-                                            id =
+                                            generateId =
                                                 getId model.currentTime
 
                                             newUser =
-                                                { id = id, email = email, name = "", movieLists = Dict.empty }
+                                                { id = generateId, email = email, name = "", movieLists = Dict.empty }
 
                                             updateWithNewUser =
-                                                -- TODO do we need ID ?
                                                 Dict.insert sessionId newUser model.users
                                         in
-                                        -- Todo - what should be send to new user ?
                                         ( { model | users = updateWithNewUser, connections = updateConnections }
-                                        , sendToFrontend sessionId <| ResponseAuth (LoggedIn newUser) "Welcome newly registered user !"
+                                        , sendToFrontend sessionId <| ResponseAuth (LoggedIn newUser) (Just "Welcome newly registered user !")
                                         )
 
                             else
-                                ( { model | pendingAuth = updatePendingAuth }, sendToFrontend clientId <| ResponseAuth Anonymus "This token has expired" )
+                                ( { model | pendingAuth = updatePendingAuth }, sendToFrontend clientId <| ResponseAuth Anonymus (Just "This token has expired") )
 
                         Nothing ->
                             let
                                 updateModel =
                                     { model | pendingAuth = updatePendingAuth }
-                            in
-                            case model.connections |> Dict.get sessionId of
-                                Just usersSessionId ->
-                                    case Dict.get usersSessionId model.users of
-                                        Just userInfo ->
-                                            ( updateModel
-                                            , sendToFrontend sessionId <| ResponseAuth (LoggedIn userInfo) "[We are ignoring the fact the you are trying to connect with same token] User already logged in"
-                                            )
 
-                                        Nothing ->
-                                            ( updateModel
-                                            , sendToFrontend sessionId <| ResponseAuth Anonymus "Token already used"
+                                maybeUser =
+                                    model.connections
+                                        |> Dict.get sessionId
+                                        |> Maybe.andThen
+                                            (\usersSessionId ->
+                                                Dict.get usersSessionId model.users
                                             )
+                            in
+                            case maybeUser of
+                                Just userInfo ->
+                                    ( updateModel
+                                    , sendToFrontend sessionId <| ResponseAuth (LoggedIn userInfo) (Just "[We are ignoring the fact the you are trying to connect with same token] User already logged in")
+                                    )
 
                                 Nothing ->
                                     ( updateModel
-                                    , sendToFrontend sessionId <| ResponseAuth Anonymus "Token already used"
+                                    , sendToFrontend sessionId <| ResponseAuth Anonymus (Just "Token already used")
                                     )
             in
             ( updatedModel, Cmd.batch [ cmdMsg, sendToFrontend sessionId GoHome ] )
 
-        -- Nothing ->
-        --     ( model, sendToFrontend clientId InvalidToken )
         RequestLogout ->
             ( { model | connections = Dict.remove sessionId model.connections }
-            , sendToFrontend sessionId <| ResponseAuth Anonymus "Session has been terminated"
+            , sendToFrontend sessionId <| ResponseAuth Anonymus (Just "Session has been terminated")
             )
 
         RequestUpdateName name ->
             let
-                updateUser =
-                    Maybe.map (\u -> { u | name = name })
-
-                updatedUsers =
-                    Dict.update sessionId updateUser model.users
+                maybeUpdatedUsers =
+                    model.connections
+                        |> Dict.get sessionId
+                        |> Maybe.map
+                            (\usersSessionId ->
+                                let
+                                    updateUser =
+                                        Maybe.map (\u -> { u | name = name })
+                                in
+                                Dict.update usersSessionId updateUser model.users
+                            )
             in
-            ( { model | users = updatedUsers }
-            , case Dict.get sessionId updatedUsers of
-                Just user ->
-                    -- sendToFePage sessionId (ProfileMsg (ResponseUserUpdate user))
-                    sendToFrontend sessionId <| ResponseAuth (LoggedIn user) "Name successfully saved !"
+            case maybeUpdatedUsers of
+                Just updatedUsers ->
+                    ( { model | users = updatedUsers }
+                    , case Dict.get sessionId updatedUsers of
+                        Just user ->
+                            sendToFrontend sessionId <| ResponseAuth (LoggedIn user) (Just "Name successfully saved !")
+
+                        Nothing ->
+                            Cmd.none
+                    )
 
                 Nothing ->
-                    Cmd.none
-            )
+                    ( model, sendToFrontend sessionId <| ResponseAuth Anonymus (Just "Your session is not valid") )
 
         RequestNewList newListName ->
+            addNewListAndMovie
+                { sessionId = sessionId
+                , model = model
+                , newListName = newListName
+                , notification = "New list '" ++ newListName ++ "' created !"
+                , lstOfMovies = []
+                }
+
+        FetchMovieLists ->
             let
+                maybeMovieList =
+                    model.connections
+                        |> Dict.get sessionId
+                        |> Maybe.andThen
+                            (\usersSessionId ->
+                                Dict.get usersSessionId model.users
+                                    |> Maybe.map
+                                        .movieLists
+                            )
+            in
+            case maybeMovieList of
+                Just foundMovieLists ->
+                    ( model, sendToFePage sessionId <| SearchMsg <| ResponseUsersMovieLists foundMovieLists )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        RequestWriteMovieInNewLists ( newListName, selectedMovie ) ->
+            addNewListAndMovie
+                { sessionId = sessionId
+                , model = model
+                , newListName = newListName
+                , notification = "Movie '" ++ selectedMovie.title ++ "' added to NEW list '" ++ newListName ++ "'!"
+                , lstOfMovies = [ selectedMovie ]
+                }
+
+        RequestWriteLists ( selectedMovie, listOfListIds ) ->
+            let
+                toGetUser : User -> ( BackendModel, Cmd BackendMsg )
+                toGetUser currentUser =
+                    let
+                        updateUser =
+                            Maybe.map (\u -> { u | movieLists = updatedMovieLists currentUser.movieLists selectedMovie listOfListIds })
+
+                        updatedUsers =
+                            Dict.update sessionId updateUser model.users
+                    in
+                    ( { model | users = updatedUsers }
+                    , case Dict.get sessionId updatedUsers of
+                        Just user ->
+                            sendToFrontend sessionId <| ResponseAuth (LoggedIn user) (Just "List of movies successfully updated !")
+
+                        Nothing ->
+                            Cmd.none
+                    )
+
+                toGetConnectedUser : SessionId -> Maybe ( BackendModel, Cmd BackendMsg )
+                toGetConnectedUser usersSessionId =
+                    Dict.get usersSessionId model.users
+                        |> Maybe.map
+                            toGetUser
+
+                maybeUpdatedModelCmdMsg : Maybe ( BackendModel, Cmd BackendMsg )
+                maybeUpdatedModelCmdMsg =
+                    model.connections
+                        |> Dict.get sessionId
+                        |> Maybe.andThen
+                            toGetConnectedUser
+            in
+            case maybeUpdatedModelCmdMsg of
+                Just ( updatedModel, cmdMsg ) ->
+                    ( updatedModel, cmdMsg )
+
+                Nothing ->
+                    ( model, sendToFrontend sessionId <| ResponseAuth Anonymus (Just "Your session is not valid") )
+
+
+updatedMovieLists :
+    Dict MovieListName MovieListData
+    -> Movie
+    -> List ListId
+    -> Dict MovieListName MovieListData
+updatedMovieLists movieLists selectedMovie listOfListIds =
+    movieLists
+        |> Dict.map
+            (\_ mlData ->
+                if List.member mlData.listId listOfListIds then
+                    let
+                        addMovieToList mvi lst =
+                            case lst of
+                                [] ->
+                                    mvi :: lst
+
+                                x :: xs ->
+                                    if x.id == mvi.id then
+                                        lst
+
+                                    else
+                                        addMovieToList mvi xs
+
+                        updateLists =
+                            { mlData | listOfMovies = addMovieToList selectedMovie mlData.listOfMovies }
+                    in
+                    updateLists
+
+                else
+                    mlData
+            )
+
+
+addNewListAndMovie :
+    { sessionId : SessionId, model : Model, newListName : MovieListName, notification : String, lstOfMovies : List Movie }
+    -> ( Model, Cmd BackendMsg )
+addNewListAndMovie { sessionId, model, newListName, notification, lstOfMovies } =
+    case Dict.get sessionId model.connections of
+        Just usersSessionId ->
+            let
+                insertNewList u =
+                    Dict.insert newListName { listId = generatedListId, sharedWith = Set.empty, listOfMovies = lstOfMovies } u.movieLists
+
                 updateUser =
-                    Maybe.map (\u -> { u | movieLists = Dict.insert newListName Nothing u.movieLists })
+                    Maybe.map (\u -> { u | movieLists = insertNewList u })
+
+                generatedListId =
+                    generateNewListId model.currentTime
 
                 updatedUsers =
-                    Dict.update sessionId updateUser model.users
+                    Dict.update usersSessionId updateUser model.users
             in
             ( { model | users = updatedUsers }
             , case Dict.get sessionId updatedUsers of
                 Just user ->
-                    sendToFrontend sessionId <| ResponseAuth (LoggedIn user) ("New list called '" ++ newListName ++ "' created !")
+                    sendToFrontend sessionId <| ResponseAuth (LoggedIn user) (Just notification)
 
                 Nothing ->
                     Cmd.none
             )
+
+        Nothing ->
+            ( model, sendToFrontend sessionId <| ResponseAuth Anonymus (Just "Your session is not valid") )

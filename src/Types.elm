@@ -59,7 +59,9 @@ type ResultsState
 
 type alias ProfileModel =
     { name : String
-    , movieLists : Dict MovieListName (Maybe MovieListData)
+    , movieLists : Dict MovieListName MovieListData
+    , newListName : String
+    , id : Maybe Id
     }
 
 
@@ -71,7 +73,16 @@ type alias SearchModel =
     { resultsState : ResultsState
     , movieValue : String
     , timer : Timer
+    , movieModalState : MovieModalState
+    , movieLists : Dict MovieListName MovieListData
+    , newListName : String
+    , selectedMovies : List ListId
     }
+
+
+type MovieModalState
+    = Opened Movie
+    | Closed
 
 
 type PageMsgs
@@ -88,7 +99,7 @@ type Page
 
 
 type alias Movie =
-    { id : Int
+    { id : MovieId
     , overview : String
     , posterPath : String
     , releaseDate : String
@@ -100,14 +111,14 @@ type alias User =
     { id : Id
     , name : String
     , email : Email
-    , movieLists : Dict MovieListName (Maybe MovieListData)
+    , movieLists : Dict MovieListName MovieListData
     }
 
 
 type alias MovieListData =
     { sharedWith : Set String --  friends Email ?
-    , movieList : List Movie
-    , listId : Int
+    , listOfMovies : List Movie
+    , listId : ListId
     }
 
 
@@ -161,6 +172,8 @@ type LoginMsg
 type ProfileMsg
     = StoreName String
     | SubmitName
+    | StoreNewListFromProfile String
+    | CreateNewListFromProfile
 
 
 
@@ -171,6 +184,20 @@ type SearchMsg
     = StoreMovie String
     | Tick Time.Posix
     | ResponseFetchMovies (Result String (List Movie))
+    | OpenModal MovieModalState
+    | ResponseUsersMovieLists (Dict MovieListName MovieListData)
+    | StoreNewListFromSearch String
+    | CreateNewListFromSearch
+    | CheckList ListId Bool
+    | InitWriteLists
+
+
+type alias MovieId =
+    Int
+
+
+type alias ListId =
+    String
 
 
 type FrontendMsg
@@ -195,6 +222,9 @@ type ToBackend
     | RequestUpdateName String
     | RequestNewList String
     | GotSession
+    | FetchMovieLists
+    | RequestWriteLists ( Movie, List ListId )
+    | RequestWriteMovieInNewLists ( MovieListName, Movie )
 
 
 type BackendMsg
@@ -207,7 +237,7 @@ type BackendMsg
 
 
 type ToFrontend
-    = ResponseAuth Session String
+    = ResponseAuth Session (Maybe String)
     | UpdateToPages PageMsgs
     | GoHome
 
@@ -218,6 +248,13 @@ getLoginToken currentTime =
         ++ String.fromInt (Time.posixToMillis currentTime)
         |> Sha256.sha256
         |> Token
+
+
+generateNewListId : Time.Posix -> String
+generateNewListId currentTime =
+    Env.salt
+        ++ String.fromInt (Time.posixToMillis currentTime + (Time.posixToMillis currentTime // 2))
+        |> Sha256.sha256
 
 
 getId : Time.Posix -> Id

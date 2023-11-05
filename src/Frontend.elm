@@ -43,16 +43,8 @@ init : Url -> Key -> ( Model, Cmd FrontendMsg )
 init url key =
     let
         requestToBackend =
-            let
-                _ =
-                    Debug.log "requestToBackend" (UrlP.parse matchRoute url)
-            in
             case UrlP.parse matchRoute url of
                 Just (LoginTokenRoute maybeToken) ->
-                    let
-                        _ =
-                            Debug.log "usao u login" maybeToken
-                    in
                     case maybeToken of
                         Just token ->
                             Cmd.batch [ sendToBackend <| RequestAuth token, Nav.replaceUrl key "/" ]
@@ -89,10 +81,6 @@ matchRoute =
 
 urlToPage : Url -> Session -> Page
 urlToPage url sessionStatus =
-    let
-        _ =
-            Debug.log "urlToPage" ( url, sessionStatus )
-    in
     case UrlP.parse matchRoute url of
         Just HomeRoute ->
             HomePage
@@ -138,7 +126,7 @@ update msg model =
         UrlClicked urlRequest ->
             case urlRequest of
                 Internal url ->
-                    ( { model | page = urlToPage url model.sessionStatus }
+                    ( { model | page = urlToPage url model.sessionStatus, url = url }
                     , Nav.pushUrl model.key (Url.toString url)
                     )
 
@@ -148,7 +136,7 @@ update msg model =
                     )
 
         UrlChanged url ->
-            ( { model | page = urlToPage url model.sessionStatus }, Cmd.none )
+            ( { model | page = urlToPage url model.sessionStatus, url = url }, Cmd.none )
 
         TriggerLogout ->
             ( { model | sessionStatus = Anonymus }, sendToBackend RequestLogout )
@@ -202,13 +190,15 @@ updateFromBackend : ToFrontend -> Model -> ( Model, Cmd FrontendMsg )
 updateFromBackend msg model =
     case msg of
         ResponseAuth sessionStatus notification ->
-            let
-                _ =
-                    Debug.log "NOTIFICATION FROM BE: " ( sessionStatus, notification )
-            in
             ( { model
                 | sessionStatus = sessionStatus
-                , notifications = model.notifications ++ [ notification ]
+                , notifications =
+                    case notification of
+                        Just not ->
+                            model.notifications ++ [ not ]
+
+                        Nothing ->
+                            model.notifications
                 , page = urlToPage model.url sessionStatus
               }
             , Process.sleep 3000 |> Task.perform (\_ -> HideNotification)
@@ -217,10 +207,6 @@ updateFromBackend msg model =
         UpdateToPages pageMsg ->
             case pageMsg of
                 ProfileMsg profileMsg ->
-                    let
-                        _ =
-                            Debug.log "UpdateToPages in FE: " ( model.page, profileMsg )
-                    in
                     case model.page of
                         ProfilePage profileModel ->
                             updatePageTemplate model ProfilePage (Profile.update profileMsg profileModel) GotProfileMsg
