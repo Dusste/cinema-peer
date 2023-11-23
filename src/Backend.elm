@@ -18,7 +18,6 @@ type alias Model =
     BackendModel
 
 
-app : { init : ( Model, Cmd BackendMsg ), update : BackendMsg -> Model -> ( Model, Cmd BackendMsg ), updateFromFrontend : SessionId -> ClientId -> ToBackend -> Model -> ( Model, Cmd BackendMsg ), subscriptions : Model -> Sub BackendMsg }
 app =
     Lamdera.backend
         { init = init
@@ -56,16 +55,24 @@ sendToFePage sessionId toMsg =
 update : BackendMsg -> Model -> ( Model, Cmd BackendMsg )
 update msg model =
     case msg of
-        NoOpBackendMsg ->
-            ( model, Cmd.none )
-
         GotMovies (Err err) ->
             -- TODO shouldn't send err to everyone
-            ( model, broadcast <| UpdateToPages <| SearchMsg <| ResponseFetchMovies (Err (buildErrorMessage err)) )
+            ( model, broadcast <| UpdateToPages <| SearchMsg <| ResponseFetchMovies (Err (buildErrorMessage err)) Dict.empty )
 
         GotMovies (Ok ( sessionId, movies )) ->
+            let
+                maybeMovieList =
+                    model.connections
+                        |> Dict.get sessionId
+                        |> Maybe.andThen
+                            (\usersSessionId ->
+                                Dict.get usersSessionId model.users
+                                    |> Maybe.map
+                                        .movieLists
+                            )
+            in
             ( model
-            , sendToFePage sessionId (SearchMsg (ResponseFetchMovies (Ok movies)))
+            , sendToFePage sessionId (SearchMsg (ResponseFetchMovies (Ok movies) (maybeMovieList |> Maybe.withDefault Dict.empty)))
             )
 
         LoginTokenSend (Ok ()) ->
@@ -140,9 +147,6 @@ moviesDecoder sessionId =
 updateFromFrontend : SessionId -> ClientId -> ToBackend -> Model -> ( Model, Cmd BackendMsg )
 updateFromFrontend sessionId clientId msg model =
     case msg of
-        NoOpToBackend ->
-            ( model, Cmd.none )
-
         GotSession ->
             let
                 maybeUser =
@@ -290,25 +294,23 @@ updateFromFrontend sessionId clientId msg model =
                 , lstOfMovies = []
                 }
 
-        FetchMovieLists ->
-            let
-                maybeMovieList =
-                    model.connections
-                        |> Dict.get sessionId
-                        |> Maybe.andThen
-                            (\usersSessionId ->
-                                Dict.get usersSessionId model.users
-                                    |> Maybe.map
-                                        .movieLists
-                            )
-            in
-            case maybeMovieList of
-                Just foundMovieLists ->
-                    ( model, sendToFePage sessionId <| SearchMsg <| ResponseUsersMovieLists foundMovieLists )
-
-                Nothing ->
-                    ( model, Cmd.none )
-
+        -- FetchMovieLists ->
+        --     let
+        --         maybeMovieList =
+        --             model.connections
+        --                 |> Dict.get sessionId
+        --                 |> Maybe.andThen
+        --                     (\usersSessionId ->
+        --                         Dict.get usersSessionId model.users
+        --                             |> Maybe.map
+        --                                 .movieLists
+        --                     )
+        --     in
+        --     case maybeMovieList of
+        --         Just foundMovieLists ->
+        --             ( model, sendToFePage sessionId <| SearchMsg <| ResponseUsersMovieLists foundMovieLists )
+        --         Nothing ->
+        --             ( model, Cmd.none )
         RequestWriteMovieInNewLists ( newListName, selectedMovie ) ->
             addNewListAndMovie
                 { sessionId = sessionId

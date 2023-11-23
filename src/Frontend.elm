@@ -7,6 +7,7 @@ import Html.Styled.Attributes as Attr
 import Html.Styled.Events exposing (onClick, onInput)
 import Lamdera exposing (sendToBackend)
 import Login
+import MovieList
 import Platform.Cmd as Cmd
 import Process
 import Profile
@@ -18,7 +19,7 @@ import Task
 import Time
 import Types exposing (..)
 import Url exposing (Url)
-import Url.Parser as UrlP exposing ((</>), (<?>), custom, s)
+import Url.Parser as UrlP exposing ((</>), (<?>), custom, s, string)
 import Url.Parser.Query as UrlPQ
 
 
@@ -75,6 +76,7 @@ matchRoute =
         , UrlP.map LoginTokenRoute (s "loginToken" <?> parserToken)
         , UrlP.map LoginRoute (s "login")
         , UrlP.map SearchRoute (s "search")
+        , UrlP.map MovieListRoute (s "profile" </> userIdParser </> s "list" </> string)
         , UrlP.map ProfileRoute (s "profile" </> userIdParser)
         ]
 
@@ -98,6 +100,9 @@ urlToPage url sessionStatus =
 
                 _ ->
                     NotFoundPage
+
+        Just (MovieListRoute _ _) ->
+            MovieListPage (MovieList.init |> Tuple.first)
 
         Just SearchRoute ->
             SearchPage (Search.init |> Tuple.first)
@@ -181,6 +186,14 @@ update msg model =
             case model.page of
                 ProfilePage profileModel ->
                     updatePageTemplate model ProfilePage (Profile.update profileMsg profileModel) GotProfileMsg
+
+                _ ->
+                    ( model, Cmd.none )
+
+        GotMlMsg mlMsg ->
+            case model.page of
+                MovieListPage mlModel ->
+                    updatePageTemplate model MovieListPage (MovieList.update mlMsg mlModel) GotMlMsg
 
                 _ ->
                     ( model, Cmd.none )
@@ -274,6 +287,9 @@ content model =
                                         ]
                                     ]
                                 ]
+
+                        MovieListPage mlModel ->
+                            MovieList.view mlModel |> Html.map GotMlMsg
 
                         SearchPage searchModel ->
                             Search.view searchModel |> Html.map GotSearchMsg

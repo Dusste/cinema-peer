@@ -8,7 +8,7 @@ import Email.Html.Attributes
 import EmailAddress exposing (EmailAddress)
 import Env
 import Http
-import Lamdera exposing (ClientId, SessionId)
+import Lamdera exposing (ClientId, SessionId, sendToBackend)
 import List.Nonempty
 import SendGrid
 import Set exposing (Set)
@@ -39,6 +39,7 @@ type Route
     | ProfileRoute UserId
     | LoginRoute
     | SearchRoute
+    | MovieListRoute UserId ListId
     | LoginTokenRoute (Maybe Token)
     | NotFoundRoute
 
@@ -63,6 +64,10 @@ type alias ProfileModel =
     , newListName : String
     , id : Maybe Id
     }
+
+
+type alias MovieListModel =
+    {}
 
 
 type alias LoginModel =
@@ -90,11 +95,16 @@ type PageMsgs
     | SearchMsg SearchMsg
 
 
+type MovieListMsg
+    = NoOpM
+
+
 type Page
     = LoginPage LoginModel
     | ProfilePage ProfileModel
     | SearchPage SearchModel
     | HomePage
+    | MovieListPage MovieListModel
     | NotFoundPage
 
 
@@ -183,9 +193,9 @@ type ProfileMsg
 type SearchMsg
     = StoreMovie String
     | Tick Time.Posix
-    | ResponseFetchMovies (Result String (List Movie))
+    | ResponseFetchMovies (Result String (List Movie)) (Dict MovieListName MovieListData)
     | OpenModal MovieModalState
-    | ResponseUsersMovieLists (Dict MovieListName MovieListData)
+      -- | ResponseUsersMovieLists (Dict MovieListName MovieListData)
     | StoreNewListFromSearch String
     | CreateNewListFromSearch
     | CheckList ListId Bool
@@ -200,12 +210,17 @@ type alias ListId =
     String
 
 
+
+-- = GotMovies (Result Http.Error (List Movie))
+
+
 type FrontendMsg
     = UrlClicked UrlRequest
     | UrlChanged Url
     | GotLoginMsg LoginMsg
     | GotProfileMsg ProfileMsg
     | GotSearchMsg SearchMsg
+    | GotMlMsg MovieListMsg
     | TriggerLogout
     | HideNotification
     | OpenNewListModal
@@ -214,22 +229,20 @@ type FrontendMsg
 
 
 type ToBackend
-    = NoOpToBackend
-    | RequestFetchMovies String
-    | RequestLogin Email
+    = RequestLogin Email
     | RequestAuth Token
     | RequestLogout
     | RequestUpdateName String
     | RequestNewList String
     | GotSession
-    | FetchMovieLists
+      -- | FetchMovieLists
     | RequestWriteLists ( Movie, List ListId )
     | RequestWriteMovieInNewLists ( MovieListName, Movie )
+    | RequestFetchMovies String
 
 
 type BackendMsg
-    = NoOpBackendMsg
-    | GotMovies (Result Http.Error ( SessionId, List Movie ))
+    = GotMovies (Result Http.Error ( SessionId, List Movie ))
     | LoginTokenSend (Result SendGrid.Error ())
     | GetTime Time.Posix
     | UserConnected SessionId ClientId

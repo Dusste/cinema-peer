@@ -71,18 +71,18 @@ update msg model =
                         Cmd.none
                     )
 
-        ResponseFetchMovies (Ok movies) ->
-            ( { model | resultsState = Success movies, timer = TimerOff }, Cmd.none )
+        ResponseFetchMovies (Ok movies) movieLists ->
+            ( { model | resultsState = Success movies, timer = TimerOff, movieLists = movieLists }, Cmd.none )
 
-        ResponseFetchMovies (Err err) ->
+        ResponseFetchMovies (Err err) _ ->
             ( { model | timer = TimerOff }, Cmd.none )
 
         OpenModal movieModalState ->
-            ( { model | movieModalState = movieModalState, selectedMovies = [] }, sendToBackend FetchMovieLists )
+            ( { model | movieModalState = movieModalState, selectedMovies = [] }, Cmd.none )
 
-        ResponseUsersMovieLists movieLists ->
-            ( { model | movieLists = movieLists }, Cmd.none )
-
+        -- ( { model | movieModalState = movieModalState, selectedMovies = [] }, sendToBackend FetchMovieLists )
+        -- ResponseUsersMovieLists movieLists ->
+        --     ( { model | movieLists = movieLists }, Cmd.none )
         CreateNewListFromSearch ->
             let
                 trimmedListName =
