@@ -320,13 +320,13 @@ updateFromFrontend sessionId clientId msg model =
                 , lstOfMovies = [ selectedMovie ]
                 }
 
-        RequestWriteLists ( selectedMovie, listOfListIds ) ->
+        RequestWriteLists ( selectedMovie, targetListIds ) ->
             let
                 toGetUser : User -> ( BackendModel, Cmd BackendMsg )
                 toGetUser currentUser =
                     let
                         updateUser =
-                            Maybe.map (\u -> { u | movieLists = updatedMovieLists currentUser.movieLists selectedMovie listOfListIds })
+                            Maybe.map (\u -> { u | movieLists = updatedMovieLists currentUser.movieLists selectedMovie targetListIds })
 
                         updatedUsers =
                             Dict.update sessionId updateUser model.users
@@ -359,39 +359,6 @@ updateFromFrontend sessionId clientId msg model =
 
                 Nothing ->
                     ( model, sendToFrontend sessionId <| ResponseAuth Anonymus (Just "Your session is not valid") )
-
-
-updatedMovieLists :
-    Dict MovieListName MovieListData
-    -> Movie
-    -> List ListId
-    -> Dict MovieListName MovieListData
-updatedMovieLists movieLists selectedMovie listOfListIds =
-    movieLists
-        |> Dict.map
-            (\_ mlData ->
-                if List.member mlData.listId listOfListIds then
-                    let
-                        addMovieToList mvi lst =
-                            case lst of
-                                [] ->
-                                    mvi :: lst
-
-                                x :: xs ->
-                                    if x.id == mvi.id then
-                                        lst
-
-                                    else
-                                        addMovieToList mvi xs
-
-                        updateLists =
-                            { mlData | listOfMovies = addMovieToList selectedMovie mlData.listOfMovies }
-                    in
-                    updateLists
-
-                else
-                    mlData
-            )
 
 
 addNewListAndMovie :

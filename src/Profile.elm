@@ -96,6 +96,9 @@ view model =
                                 let
                                     isMovieListEmpty =
                                         List.isEmpty listData.listOfMovies
+
+                                    someMoviesPosters =
+                                        List.take 2 listData.listOfMovies |> List.map (\m -> m.posterPath)
                                 in
                                 Html.li []
                                     [ Html.div []
@@ -119,7 +122,9 @@ view model =
                                                         "/home"
                                         in
                                         Html.div []
-                                            [ Html.div []
+                                            [ Html.ul []
+                                                (someMoviesPosters |> List.map (\poster -> Html.li [] [ Html.img [ Attr.css [ Tw.w_12 ], Attr.src <| "https://image.tmdb.org/t/p/original" ++ poster ] [] ]))
+                                            , Html.div []
                                                 [ Html.p [] [ text "Shared with: " ]
                                                 , Html.ul [] (listData.sharedWith |> Set.toList |> List.map (\friendsEmail -> Html.li [] [ text friendsEmail ]))
                                                 ]

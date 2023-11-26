@@ -346,3 +346,36 @@ getLinkToLogin (Token loginToken) =
 tokenToString : Token -> String
 tokenToString (Token token) =
     token
+
+
+updatedMovieLists :
+    Dict MovieListName MovieListData
+    -> Movie
+    -> List ListId
+    -> Dict MovieListName MovieListData
+updatedMovieLists movieLists selectedMovie targetListIds =
+    movieLists
+        |> Dict.map
+            (\_ mlData ->
+                if List.member mlData.listId targetListIds then
+                    let
+                        addMovieToList mvi lst =
+                            case lst of
+                                [] ->
+                                    mvi :: lst
+
+                                x :: xs ->
+                                    if x.id == mvi.id then
+                                        lst
+
+                                    else
+                                        x :: addMovieToList mvi xs
+
+                        updateLists =
+                            { mlData | listOfMovies = addMovieToList selectedMovie mlData.listOfMovies }
+                    in
+                    updateLists
+
+                else
+                    mlData
+            )
