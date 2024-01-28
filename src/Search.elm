@@ -27,6 +27,40 @@ initModel =
     }
 
 
+fromWordToInt : String -> Maybe Int
+fromWordToInt wrd =
+    case wrd of
+        "one" ->
+            Just 1
+
+        "two" ->
+            Just 2
+
+        "three" ->
+            Just 3
+
+        "four" ->
+            Just 4
+
+        "five" ->
+            Just 5
+
+        "six" ->
+            Just 6
+
+        "seven" ->
+            Just 7
+
+        "eight" ->
+            Just 8
+
+        "nine" ->
+            Just 9
+
+        _ ->
+            Nothing
+
+
 init : ( Model, Cmd SearchMsg )
 init =
     ( initModel, Cmd.none )
@@ -158,13 +192,13 @@ view model =
                         [ Html.div [] [ text "Hmm couldn't find any movie" ] ]
 
                      else
-                        movies |> List.map (viewEachMovie model.movieModalState model.movieLists)
+                        movies |> List.map (viewEachMovie model.movieModalState model.movieLists model.selectedMovies)
                     )
         ]
 
 
-viewEachMovie : MovieModalState -> Dict MovieListName MovieListData -> Movie -> Html SearchMsg
-viewEachMovie movieModalState movieLists movie =
+viewEachMovie : MovieModalState -> Dict MovieListName MovieListData -> List ListId -> Movie -> Html SearchMsg
+viewEachMovie movieModalState movieLists selectedMovies movie =
     Html.li []
         [ viewEachMovieContent movie
         , case movieModalState of
@@ -181,7 +215,7 @@ viewEachMovie movieModalState movieLists movie =
                                 viewModalEmptyList
 
                               else
-                                viewModaMovieList movieListToList
+                                viewModalMovieList movieListToList selectedMovies
                             ]
                         ]
 
@@ -202,8 +236,8 @@ viewEachMovieContent movie =
         ]
 
 
-viewModaMovieList : List ( MovieListName, MovieListData ) -> Html SearchMsg
-viewModaMovieList movieListToList =
+viewModalMovieList : List ( MovieListName, MovieListData ) -> List ListId -> Html SearchMsg
+viewModalMovieList movieListToList selectedMovies =
     Html.div []
         [ Html.ul []
             (movieListToList
@@ -221,7 +255,11 @@ viewModaMovieList movieListToList =
                             ]
                     )
             )
-        , Html.button [ onClick InitWriteLists ] [ text "Add" ]
+        , if List.isEmpty selectedMovies then
+            text ""
+
+          else
+            Html.button [ onClick InitWriteLists ] [ text "Add" ]
         ]
 
 

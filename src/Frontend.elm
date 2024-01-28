@@ -2,6 +2,7 @@ module Frontend exposing (..)
 
 import Browser exposing (UrlRequest(..))
 import Browser.Navigation as Nav exposing (Key)
+import Dict
 import Html.Styled as Html exposing (Html, text)
 import Html.Styled.Attributes as Attr
 import Html.Styled.Events exposing (onClick, onInput)
@@ -76,7 +77,7 @@ matchRoute =
         , UrlP.map LoginTokenRoute (s "loginToken" <?> parserToken)
         , UrlP.map LoginRoute (s "login")
         , UrlP.map SearchRoute (s "search")
-        , UrlP.map MovieListRoute (s "profile" </> userIdParser </> s "list" </> string)
+        , UrlP.map MovieListRoute (s "profile" </> userIdParser </> s "list" </> listIdParser)
         , UrlP.map ProfileRoute (s "profile" </> userIdParser)
         ]
 
@@ -101,8 +102,17 @@ urlToPage url sessionStatus =
                 _ ->
                     NotFoundPage
 
-        Just (MovieListRoute _ _) ->
-            MovieListPage (MovieList.init |> Tuple.first)
+        Just (MovieListRoute _ listId) ->
+            case sessionStatus of
+                LoggedIn { movieLists } ->
+                    let
+                        movieList =
+                            movieLists |> Dict.filter (\_ mlData -> mlData.listId == listId)
+                    in
+                    MovieListPage (MovieList.init movieList |> Tuple.first)
+
+                _ ->
+                    NotFoundPage
 
         Just SearchRoute ->
             SearchPage (Search.init |> Tuple.first)
@@ -116,6 +126,14 @@ userIdParser =
     custom "USERID"
         (\userId ->
             Maybe.map UserId (Just userId)
+        )
+
+
+listIdParser : UrlP.Parser (ListId -> a) a
+listIdParser =
+    custom "LISTID"
+        (\listId ->
+            Just listId
         )
 
 
@@ -231,6 +249,14 @@ updateFromBackend msg model =
                     case model.page of
                         SearchPage searchModel ->
                             updatePageTemplate model SearchPage (Search.update searchMsg searchModel) GotSearchMsg
+
+                        _ ->
+                            ( model, Cmd.none )
+
+                MovieListMsg mlMsg ->
+                    case model.page of
+                        MovieListPage mlModel ->
+                            updatePageTemplate model MovieListPage (MovieList.update mlMsg mlModel) GotMlMsg
 
                         _ ->
                             ( model, Cmd.none )

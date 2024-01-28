@@ -361,6 +361,25 @@ updateFromFrontend sessionId clientId msg model =
                     ( model, sendToFrontend sessionId <| ResponseAuth Anonymus (Just "Your session is not valid") )
 
 
+
+-- RequestMovieList listId ->
+--     let
+--         maybeMovieList =
+--             model.connections
+--                 |> Dict.get sessionId
+--                 |> Maybe.andThen
+--                     (\usersSessionId ->
+--                         Dict.get usersSessionId model.users
+--                             |> Maybe.map (\user -> user.movieLists |> Dict.filter (\_ mlData -> mlData.listId == listId))
+--                     )
+--     in
+--     case maybeMovieList of
+--         Just foundMovieList ->
+--             ( model, sendToFePage sessionId <| MovieListMsg <| ResponseMovieList foundMovieList )
+--         Nothing ->
+--             ( model, Cmd.none )
+
+
 addNewListAndMovie :
     { sessionId : SessionId, model : Model, newListName : MovieListName, notification : String, lstOfMovies : List Movie }
     -> ( Model, Cmd BackendMsg )

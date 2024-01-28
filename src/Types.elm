@@ -67,7 +67,7 @@ type alias ProfileModel =
 
 
 type alias MovieListModel =
-    {}
+    { movieList : Dict MovieListName MovieListData }
 
 
 type alias LoginModel =
@@ -93,10 +93,11 @@ type MovieModalState
 type PageMsgs
     = ProfileMsg ProfileMsg
     | SearchMsg SearchMsg
+    | MovieListMsg MovieListMsg
 
 
 type MovieListMsg
-    = NoOpM
+    = NoOpMovieList
 
 
 type Page
@@ -184,10 +185,6 @@ type ProfileMsg
     | SubmitName
     | StoreNewListFromProfile String
     | CreateNewListFromProfile
-
-
-
--- | ResponseUserUpdate User
 
 
 type SearchMsg
